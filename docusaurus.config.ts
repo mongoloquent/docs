@@ -84,7 +84,7 @@ const config: Config = {
 					position: "right",
 				},
 				{
-					href: "https://github.com/ajatdarojat45/mongoloquent",
+					href: "https://github.com/mongoloquent/core",
 					label: "GitHub",
 					position: "right",
 				},
@@ -120,7 +120,7 @@ const config: Config = {
 					items: [
 						{
 							label: "GitHub",
-							href: "https://github.com/ajatdarojat45/mongoloquent",
+							href: "https://github.com/mongoloquent/core",
 						},
 						{
 							html: `
