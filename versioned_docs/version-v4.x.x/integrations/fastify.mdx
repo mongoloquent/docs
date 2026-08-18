@@ -1,0 +1,481 @@
+---
+sidebar_position: 2
+title: Fastify
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+import Sponsor from "../sponsor.mdx";
+
+# Fastify Integration
+
+<p align="center">
+
+<a href="https://fastify.dev/" target="blank">
+
+<img
+
+src="https://fastify.dev/img/logos/fastify-black.svg"
+
+width="350"
+
+alt="Fastify Logo"
+
+/>
+
+</a>
+
+</p>
+
+### Integration
+
+For integrating with `Fastify`, `Mongoloquent` provides the [@mongoloquent/fastify](https://npmjs.com/@mongoloquent/fastify) package.
+
+[Fastify](https://fastify.dev/) is a fast and low-overhead web framework for Node.js. The `@mongoloquent/fastify` package provides a Fastify plugin that initializes Mongoloquent and makes the `DB` class available through the Fastify instance.
+
+To begin using it, install the required dependencies:
+
+```bash
+npm install @mongoloquent/fastify @mongoloquent/core mongodb
+```
+
+### Registering the Plugin
+
+Once the installation process is complete, register the `@mongoloquent/fastify` plugin in your Fastify application.
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+// app.ts
+
+import Fastify from "fastify";
+import mongoloquent from "@mongoloquent/fastify";
+
+const app = Fastify({
+  logger: true,
+});
+
+app.register(mongoloquent, {
+  connection: "mongodb://localhost:27017",
+  database: "mongoloquent",
+  timezone: "Asia/Jakarta",
+});
+
+app.get("/", async () => {
+  return {
+    message: "Hello World",
+  };
+});
+
+app.listen({
+  port: 3000,
+});
+```
+
+</TabItem>
+
+</Tabs>
+
+The plugin accepts the following options:
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `connection` | `string` | `mongodb://localhost:27017` | MongoDB connection string |
+| `database` | `string` | `mongoloquent-fastify` | MongoDB database name |
+| `timezone` | `string` | `Asia/Jakarta` | Timezone used by Mongoloquent |
+
+The plugin configures the Mongoloquent `DB` and `Model` classes with these values and exposes the database instance through `fastify.mongoloquent`.
+
+### Accessing the Database
+
+After registering the plugin, the Mongoloquent `DB` class can be accessed through the Fastify instance.
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+// routes/users.ts
+
+import { FastifyInstance } from "fastify";
+
+export async function userRoutes(fastify: FastifyInstance) {
+  fastify.get("/users", async () => {
+    const db = fastify.mongoloquent.db;
+
+    // Use the Mongoloquent DB instance here
+
+    return {
+      message: "Users endpoint",
+    };
+  });
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+The `mongoloquent` property is added to the `FastifyInstance` through TypeScript module augmentation:
+
+```typescript
+declare module "fastify" {
+  interface FastifyInstance {
+    mongoloquent: {
+      db: typeof DB;
+    };
+  }
+}
+```
+
+This means that `fastify.mongoloquent.db` is fully typed when using TypeScript.
+
+### Models
+
+`Mongoloquent` implements the Active Record pattern. With this pattern, you use model classes directly to interact with the database.
+
+To continue the example, we need at least one model. Let's define the `User` model.
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+// users/user.model.ts
+
+import {
+  Model,
+  IMongoloquentSchema,
+  IMongoloquentTimestamps,
+} from "@mongoloquent/core";
+
+export interface IUser
+  extends IMongoloquentSchema,
+    IMongoloquentTimestamps {
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
+}
+
+export class User extends Model<IUser> {
+  public static $schema: IUser;
+
+  protected $collection: string = "users";
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+> **Hint**: Learn more about the Model [here](../orm/getting-started.mdx).
+
+Unlike the NestJS integration, models do not need to be registered using a module or dependency injection. Once the Mongoloquent Fastify plugin has been registered, your models can be used directly.
+
+For example, we can create a route that retrieves all users:
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+// routes/users.ts
+
+import { FastifyInstance } from "fastify";
+import { User } from "../models/user.model";
+
+export async function userRoutes(fastify: FastifyInstance) {
+  fastify.get("/users", async () => {
+    return User.get();
+  });
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+You can then register the routes in your application:
+
+```typescript
+import Fastify from "fastify";
+import mongoloquent from "@mongoloquent/fastify";
+import { userRoutes } from "./routes/users";
+
+const app = Fastify({
+  logger: true,
+});
+
+app.register(mongoloquent, {
+  connection: "mongodb://localhost:27017",
+  database: "mongoloquent",
+  timezone: "Asia/Jakarta",
+});
+
+app.register(userRoutes);
+
+app.listen({
+  port: 3000,
+});
+```
+
+### CRUD Operations
+
+Once a model is defined, you can use the normal Mongoloquent model API inside your Fastify routes.
+
+For example:
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+// routes/users.ts
+
+import { FastifyInstance } from "fastify";
+import { ObjectId } from "mongodb";
+import { User } from "../models/user.model";
+
+export async function userRoutes(fastify: FastifyInstance) {
+  fastify.get("/users", async () => {
+    return User.get();
+  });
+
+  fastify.get("/users/:id", async (request) => {
+    const { id } = request.params as { id: string };
+
+    return User.where("_id", new ObjectId(id)).first();
+  });
+
+  fastify.delete("/users/:id", async (request) => {
+    const { id } = request.params as { id: string };
+
+    const user = await User.find(new ObjectId(id));
+
+    if (!user) {
+      return;
+    }
+
+    await user.delete();
+
+    return {
+      success: true,
+    };
+  });
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+> **Hint**: To learn more about querying and models in `Mongoloquent`, read the [ORM documentation](../orm/getting-started.mdx).
+
+### Relations
+
+Relations are associations established between two or more models.
+
+There are three types of relations:
+
+| Relationship Type | Description |
+| --- | --- |
+| One-to-one | A model has one related model |
+| One-to-many / Many-to-one | A model has one or more related models |
+| Many-to-many | A model has many related models, and vice versa |
+
+To define relations in models, use the corresponding methods. For example, to define that each `User` can have multiple photos, use the `hasMany` method.
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+// users/user.model.ts
+
+import {
+  Model,
+  IMongoloquentSchema,
+  IMongoloquentTimestamps,
+} from "@mongoloquent/core";
+
+import { Photo } from "../photos/photo.model";
+
+export interface IUser
+  extends IMongoloquentSchema,
+    IMongoloquentTimestamps {
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
+}
+
+export class User extends Model<IUser> {
+  public static $schema: IUser;
+
+  protected $collection: string = "users";
+
+  public photos() {
+    return this.hasMany(Photo, "userId", "_id");
+  }
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+> **Hint**: To learn more about relations in `Mongoloquent`, read [this](../orm/relationships.mdx) chapter.
+
+You can then access the relation from your Fastify route:
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+fastify.get("/users/:id/photos", async (request) => {
+  const { id } = request.params as { id: string };
+
+  const user = await User.find(new ObjectId(id));
+
+  if (!user) {
+    return [];
+  }
+
+  return user.photos().get();
+});
+```
+
+</TabItem>
+
+</Tabs>
+
+### Transactions
+
+The `@mongoloquent/fastify` package does not introduce a separate transaction API. Transactions are handled by the Mongoloquent `DB` class provided by `@mongoloquent/core`.
+
+You can access the `DB` instance through `fastify.mongoloquent.db`.
+
+For example:
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+fastify.post("/users/bulk", async () => {
+  const db = fastify.mongoloquent.db;
+
+  try {
+    await db.transaction(async (session) => {
+      await User.insert(
+        {
+          firstName: "Abraham",
+          lastName: "Lincoln",
+          isActive: true,
+        },
+        { session },
+      );
+
+      await User.insert(
+        {
+          firstName: "John",
+          lastName: "Booth",
+          isActive: true,
+        },
+        { session },
+      );
+    });
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    // Transaction has been rolled back
+    throw error;
+  }
+});
+```
+
+</TabItem>
+
+</Tabs>
+
+> **Notice**: Mongoloquent transactions only work within the same MongoDB connection.
+
+> **Hint**: To learn more about Mongoloquent transactions, read [this](../database/getting-started/#database-transactions) chapter.
+
+### Using Fastify Hooks
+
+Because Mongoloquent is registered as a Fastify plugin, it can be accessed from Fastify hooks as well.
+
+For example:
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+app.addHook("onRequest", async (request, reply) => {
+  const db = app.mongoloquent.db;
+
+  // Use the Mongoloquent DB instance here
+});
+```
+
+</TabItem>
+
+</Tabs>
+
+This can be useful when you need to perform database-related operations as part of Fastify's request lifecycle.
+
+### Configuration
+
+The `@mongoloquent/fastify` plugin accepts the following configuration:
+
+<Tabs>
+
+<TabItem value="Typescript" label="Typescript" default>
+
+```typescript
+app.register(mongoloquent, {
+  connection: "mongodb://localhost:27017",
+  database: "mongoloquent",
+  timezone: "Asia/Jakarta",
+});
+```
+
+</TabItem>
+
+</Tabs>
+
+All options are optional.
+
+If no options are provided, the plugin uses the following defaults:
+
+```typescript
+{
+  connection: "mongodb://localhost:27017",
+  database: "mongoloquent-fastify",
+  timezone: "Asia/Jakarta",
+}
+```
+
+The plugin then applies these settings to both the `DB` and `Model` classes before decorating the Fastify instance.
+
+### TypeScript Support
+
+The package includes TypeScript declarations that extend the Fastify instance with the `mongoloquent` property.
+
+This allows you to access the database with full type safety:
+
+```typescript
+const db = fastify.mongoloquent.db;
+```
+
+The plugin requires Fastify version `5.0.0` or higher.
+
+### API Reference
+
+You can find the API reference for the `@mongoloquent/fastify` package in the Mongoloquent API documentation.
